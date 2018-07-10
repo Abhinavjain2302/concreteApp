@@ -1,0 +1,50 @@
+
+<div class="sidebar-wrapper">
+    <div >
+        
+            <div class="top-logo-div">
+                <p class='main-logo-heading'> ConcreteApp </p>
+            </div>
+            <span style="clear:both;"></span>
+        
+    </div>
+    <ul class="nav">
+            <li class="divider" *ngIf="isNotMobileMenu()"></li>
+        <li routerLinkActive="active">
+            <a routerLink="/dashboard">
+                <i class="fa fa-dashboard"></i>
+                <p>DashBoard</p>
+            </a>
+        </li>
+        <li routerLinkActive="active">
+            <a routerLink="/user">
+                <i class="fa fa-user"></i>
+                <p>User Profile</p>
+            </a>
+        </li>
+        <li routerLinkActive="active">
+            <a routerLink="/purchase">
+                <i class="fa fa-plus"></i>
+                <p>Purchase Orders</p>
+            </a>    
+        </li>
+        <li routerLinkActive="active">
+            <a routerLink="/history">
+                <i class="fa fa-align-left"></i>
+                <p>History</p>
+            </a>    
+        </li>
+        <li routerLinkActive="active">
+            <a routerLink="/orders">
+                <i class="fa fa-archive"></i>
+                <p> Orders</p>
+            </a>    
+        </li>
+        <li routerLinkActive="active">
+            <a routerLink="/cancelled">
+                <i class="fa fa-times"></i>
+                <p> Cancelled Orders</p>
+            </a>    
+        </li>
+    </ul>
+</div>
