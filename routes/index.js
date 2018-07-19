@@ -9,15 +9,13 @@ var jwt = require('jsonwebtoken');
 const secret = "supersecretkey";
 var mysql= require('mysql');
 var bcrypt = require('bcrypt');
-//for qr image matrix to pixels
-var savePixels = require("save-pixels")
-//importing passport and its local strategy
+//importing passport and its local strategy;
 var passport = require('passport');
 var LocalStrategy = require('passport-local').Strategy;
-//var sync = require('synchronize')
-//qr packages
-var qr = require('qr-image');
-var fs = require('fs');
+// //var sync = require('synchronize')
+// //qr packages
+// var qr = require('qr-image');
+// var fs = require('fs');
 
 
 
@@ -26,12 +24,12 @@ var sendgridPass = process.env.SENDGRID_PASS;
 //var LocalStrategy = require('passport-local').Strategy;
 
 //here we import the User model
-//var User  = require('../models/User');
-var Order = require('../models/Orders');
-var Issue = require('../models/Issues');
-var Quote = require('../models/Quotations');
-var PO    = require('../models/PurchaseOrder');
-var City = require('../models/Cities');
+// //var User  = require('../models/User');
+// var Order = require('../models/Orders');
+// var Issue = require('../models/Issues');
+// var Quote = require('../models/Quotations');
+// var PO    = require('../models/PurchaseOrder');
+// var City = require('../models/Cities');
 
 
 
@@ -44,6 +42,41 @@ var connection=mysql.createConnection({
       database:"concrete"
 
 });
+
+
+//for notification
+router.get('/notification',function(req,res,next){
+
+var FCM = require('fcm-push');
+var serverkey = 'AAAAPLs3NwY:APA91bEIj56f0rA_R1C8vBOJGrOeQ-hNaOvk3SQgnpvMmY7EV0P-eoo076KEaAn5htogLNczjbty3wkilgIyJcSk7j-eovqyfNATIsGwRYrFsQd2BmDrFY3niGb5QDhwg0MxaxSgG_do2kNEHtz8xh92Je9Ss1PCOQ';  
+var fcm = new FCM(serverkey);
+var message ={  
+    to : 'f8_avypO3WE:APA91bEUyjbbUrElZ2lrFjb65p8jRADJAPaGOWPUpTlJxhkp4Q47FeDxb_8CuK6mGu65KRULJKbcJ5LyYO-UMBdodo7Bqqu7UeOtI2RqWFl38aIEWVEvyq7rW4R6kBcliWOXfG_IL6fztXI7UrBgJ8vZiQ9V1fgcUg',
+    // collapse_key : '<insert-collapse-key>',
+    // data : {
+    //     <random-data-key1> : '<random-data-value1>',
+    //     <random-data-key2> : '<random-data-value2>'
+    // },
+    notification : {
+        title : 'Title of the notification',
+        body : 'Body of the notification'
+    }
+};
+fcm.send(message, function(err,response){  
+      if(err) {
+        console.log("Something has gone wrong !");
+    } else {
+        console.log("Successfully sent with resposne :",response);
+    }
+});
+});
+
+
+
+
+
+
+
 
 
 
@@ -68,16 +101,80 @@ function getAllUserDashboardDetails(req, res, userId, token){
 
     async.parallel({
         orders: function(callback) {
-           // Order.getAllOrdersByUserId(userId, callback)
+          
+            var array=[];
+            var result=[];
             connection.connect(function(err){
-            // if(err) throw err;
 		    console.log("Connected from getAllOrderdByUserId");
 		    //requestedById not here
-		    var sql="select * from orders where requestedById='"+userId+"'";
-		    connection.query(sql,function(err,result,fields){
+		    var sql="select orderId,generationDate,requiredByDate,requestedBy,requestedById,supplierId,companyName,customerSite,POId,status,statusDate,statusDesc from orders where requestedById='"+userId+"'";
+		    connection.query(sql,function(err,result1,fields){
 		     if(err) throw err;
-		     callback(err,result);
-		   });
+         else{
+
+
+          for(var i=0;i<result1.length;i++){
+                array.push([]);
+              }
+     
+           if(result1.length<=0){
+            result=[];
+             callback(err,result);
+           }
+           else{
+        var sql="select * from orderMultiple where  orderId IN (";
+          for(i=0;i<result1.length;i++)
+            {
+              var sql= sql+result1[i].orderId+",";
+            }
+         sql=sql.slice(0,-1);
+         sql=sql+")";
+      connection.query(sql,function(err,result2,fields){
+        if(err) throw err;
+       else{
+           for(i=0;i<result1.length;i++)
+            {
+               
+             for(var j=0;j<result2.length;j++){
+
+                 if(result2[j].orderId==result1[i].orderId){
+                          // console.log("here");
+                       array[i].push(result2[j]);
+                   }
+                   
+            }
+        }
+
+
+             for(var i=0;i<result1.length;i++){
+                  result[i]={
+                    "orderId":result1[i].orderId,
+                     "generationDate":result1[i].generationDate,
+                     "requiredByDate":result1[i].requiredByDate,
+                     "requestedBy":result1[i].requestedBy,
+                     "requestedById":result1[i].requestedById,
+                     "supplierId":result1[i].supplierId,
+                     "companyName":result1[i].companyName,
+                      "customerSite":result1[i].customerSite,
+                     "POId":result1[i].POId,
+                     "status":result1[i].status,
+                     "statusDate":result1[i].statusDate,
+                     "statusDesc":result1[i].statusDesc,
+                     "data":array[i]
+                   }
+                  }
+
+  
+           console.log(array);
+		     
+         callback(err,result);
+		  
+}
+
+  });
+}
+}
+       });
 	   });
    },
 
@@ -99,155 +196,98 @@ function getAllUserDashboardDetails(req, res, userId, token){
         var quantityArray=[]; 
         var qualityArray=[];    
         var array=[];
+         var array2=[];
          var result=[];
-           var temp=[];
-           var i,j=0;
+        var responsesArray=[];
+       var idArray=[];
+         var priceArray=[];
+         var priceresponse=[];
+         var i,j=0;
 
-           connection.connect(function(err){
-             
-        connection.query("select distinct customerSite,generationDate,requiredDate,requestedBy,requestedByCompany,requestedById,quoteId from quotes where requestedById='"+userId+"'",function(err,result1,fields){
-		     if(err) throw err;
- 
-          connection.query("select * from quotes where requestedById='"+userId+"' order by quoteId",function(err,result5,fields){
-          if(err) throw err;
+    connection.connect(function(err){
  
 
+  connection.query("select * from quotes where requestedById='"+userId+"' order by quoteId",function(err,result1,fields){
+  if(err) throw err;
+  
 
-         connection.query("select quoteId , count(quoteId) as number from quotes where requestedById='"+userId+"' group by quoteId having number>1",function(err,result6,fields){
-        if(err) throw err;
-          else{
-            console.log(result5);
-            console.log(result6);
-           for(var i=0;i<result5.length;i++){
-            temp = [];
-            console.log("yaha...........................1"+i);
-                 //console.log(result6[j].number);
-          ///  for(var k=0;k<result6[j].number;k++){
-           for(var j=0;j<result6.length;j++)
-           {
-            console.log("yaha...........................2"+i+j);
-            
-            if(result5[i].quoteId==result6[j].quoteId)
-                  {
-                    for(var k =0; k<result6[j].number;k++)
-                    {
-                      console.log("yaha...........................3"+i+j+k);
-                      temp.push(result5[i+k].quality);
-                     // i++;
-                    }
-                    i++;
+  else{ 
+ for(var i=0;i<result1.length;i++){
 
-                }
-                  // j=result6.length;
-              }
-             // console.log(temp.length);
-            if(temp.length<=0){
-                     
-                      console.log(result5[i].quality);
-                     temp.push(result5[i].quality);
-                   
-                    }
-              qualityArray.push(temp);      
+    quantityArray.push([]);
+     qualityArray.push([]);
+     array2.push([]);
+    responsesArray.push([]);
+    idArray.push([]);
+    array.push([]);
+ }
 
+ if(result1.length<=0){
+       result=[];
 
-            }
+            callback(err,result);
+ }
+ 
+ else{
 
-console.log(qualityArray);
-}
-
-
-        //if(result6.length<0){
-          //console.log("no multiple quality and quantity");
-         //}
-        /*else{
-
-                 for(var j=0;j<result6.length;j++){
-                 console.log(result6[j].number);
-                 for(var i=0;i<result5.length;i++){
-                if(result6[j].quoteId==result5[i].quoteId){
-                     for(var k=0;k<result6[j].number;k++){
-
-                    qualityArray[k].push(result5[i].quality);
-                     }
-
-               console.log(result5[i].quality);
-                }
-                else{
-                  qualityArray.push([]);
-                }
-
-        }
-         }
-       }*/
-         //console.log(result6[0].length);
-
-      /*   if(result5[8].quoteId==10){
-          qualityArray[2].push(result5[8].quality);
-         }
-         console.log(result5[8].quality);*/
-
-
-
-
-/*console.log(result5);
-for(var i=0;i<result5.length;i++){
-  for(var j=i+1;j<result5.length;j++){
-  if(result5[i].quoteId==result5[j].quoteId)
-  {
-       /* quantityArray[i]=result1[i].quantity;
-        quantityArray[i+1]=result1[i+1].quantity;
-        qualityArray[i]=result1[i].quality;
-        qualityArray[i+1]=result1[i+1].quality;
-        quantityArray.push([result5[i].quantity]);
-         quantityArray.push([result5[j].quantity]);
-          qualityArray.push([result5[i].quality]);
-           qualityArray.push([result5[j].quality]);
-  }
-  else{
-            quantityArray.push([result5[i].quantity]);
-             qualityArray.push([result5[i].quality]);
-}
-  }
-}
-*/
-/*
-   var sql="select quantity,quality from multipledata where id IN (";
+ var sql="select  * from multipledata where  quoteId IN (";
       for(i=0;i<result1.length;i++){
-       var sql= sql+result1[i].id+",";
+       var sql= sql+result1[i].quoteId+",";
          }
          sql=sql.slice(0,-1);
          sql=sql+")";
-         connection.query(sql,function(err,result4,fields){
-         if(err) throw err;
-         console.log(result4);
-        // for(i=0;i<result1.length;i++){*/
+       connection.query(sql,function(err,result4,fields){
+      console.log(quantityArray.length);
 
-      /*  connection.query("select distinct quoteId from quotes where requestedById='"+userId+"'",function(err,result5,fields){
-         if(err) throw err;
-*/
-/*var a="";
-connection.query("select quality,quantity from multipledata where quoteId='"+result6[0].quoteId+"'",function(err,result7,fields){
-         if(err) throw err;
-         for(var i=0;i<result6[0].number;i++){
-               //a=a+result7[i].quality+","+'"';
-               qualityArray.splice(1,0,[result7[i].quality])
-            }
-          //  a=a.slice(0,-1);
-               
-            ///  qualityArray.push([a]);
-              console.log(result7);
-                //qualityArray[8]=[result7[i].quality]
-                    //qualityArray.push([result7[1].quality]);*/
-
-      var sql="select distinct * from responses where userId='"+userId+"' && quoteId IN (";
+  var sql="select  quantity,quality from multipledata where  quoteId IN (";
       for(i=0;i<result1.length;i++){
        var sql= sql+result1[i].quoteId+",";
          }
          sql=sql.slice(0,-1);
          sql=sql+")";
 
+       connection.query(sql,function(err,result3,fields){
+        // console.log(result3);
+         if(err) throw err;
+             else{
+          
+
+            for(i=0;i<result1.length;i++)
+            {
+               
+             for( j=0;j<result3.length;j++){
+
+                 if(result4[j].quoteId==result1[i].quoteId){
+                 
+                     quantityArray[i].push(result3[j].quantity);
+                     qualityArray[i].push(result3[j].quality);
+                   }
+                              
+           }
+     }
+            //console.log(quantityArray);
+
+
+            }
+
+
+console.log(quantityArray);
+
+
+
+
+//var sql="select distinct * from responses where userId='"+userId+"' && quoteId IN (";
+    
+      var sql="select rmxId,validTill,quoteId,userId,id from responses where userId='"+userId+"' && quoteId IN ( ";
+      for(i=0;i<result1.length;i++){
+       var sql= sql+result1[i].quoteId+",";
+         }
+         sql=sql.slice(0,-1);
+         sql=sql+")";
+         console.log(sql);
+
        connection.query(sql,function(err,results,fields){
-         //console.log(results);
+        // console.log(results);
          if(err) throw err;
              
             for(i=0;i<result1.length;i++)
@@ -266,7 +306,119 @@ connection.query("select quality,quantity from multipledata where quoteId='"+res
                             
                          }
                         }
-              
+
+
+                       
+
+
+if(results.length>0){
+
+       var sql="select rmxId,validTill,quoteId,userId,id from responses where userId='"+userId+"' && quoteId IN ( ";
+      for(i=0;i<result1.length;i++){
+       var sql= sql+result1[i].quoteId+",";
+         }
+         sql=sql.slice(0,-1);
+         sql=sql+") GROUP BY quoteId";
+        // console.log(sql);
+
+       connection.query(sql,function(err,result14,fields){
+         console.log(result14);
+
+
+
+                   for(var i=0;i<result1.length;i++){
+                          priceArray.push([]);
+                            priceresponse.push([]);
+                        }
+                      
+
+
+var sql="select price,id,quoteId from pricetable where id IN (";
+    for(i=0;i<results.length;i++){
+
+       var sql= sql+results[i].id+",";
+         }       
+         sql=sql.slice(0,-1);
+         sql=sql+") order by id"; 
+         console.log(sql);
+      connection.query(sql,function(err,result13,fields){
+         if(err) throw err;
+         else{
+
+                console.log(result13);
+              //  for(var k=0;k<result1.length;k++){} 
+                for(var j=0;j<result13.length;j++){
+                 for(var i=0;i<result14.length;i++){
+                    
+
+                     //if(result1[k].quoteId==result13[j].quoteId){
+
+                      if(result14[i].quoteId==result13[j].quoteId){
+                          priceArray[i].push(result13[j].price);
+                           idArray[i].push(result13[j].id);
+                      }
+                    //   else{
+                    //   priceArray[i].push([]);
+                    //   idArray[i].push([]);
+                    // }
+
+                    }
+                    // else{
+                    //   priceArray[i].push([]);
+                    //   idArray[i].push([]);
+                    // }
+                   }
+                  
+                // }   
+               console.log(priceArray);
+               console.log(idArray);
+
+for(var i=0;i<priceArray.length;i++){
+priceresponse[i]={
+
+"prices":priceArray[i],
+"id":idArray[i]
+  }
+}
+console.log(priceresponse[0]);
+}
+  
+
+
+
+
+           for(i=0;i<result1.length;i++){
+           result[i]={
+                   "quantity":  quantityArray[i],
+                   "quality":   qualityArray[i],
+                   "customerSite": result1[i].customerSite,
+                   "generationDate": result1[i].generationDate,
+                   "requiredDate": result1[i].requiredDate,
+                   "requestedBy": result1[i].requestedBy,
+                   "requestedByCompany": result1[i].requestedByCompany,
+                   "requestedById": result1[i].requestedById,
+                   "quoteId": result1[i].quoteId,
+                    "price": priceresponse[i],
+                   "responses": array[i]
+                 }
+  
+             } 
+
+            callback(err,result);
+          });
+      });
+  }
+else{
+  //else called
+  for(i=0;i<result1.length;i++)
+  {
+  array[i]=[];
+   priceresponse[i]=[];
+  }
+
+
+     
+
               for(i=0;i<result1.length;i++){
            result[i]={
                    "quantity":  quantityArray[i],
@@ -278,28 +430,34 @@ connection.query("select quality,quantity from multipledata where quoteId='"+res
                    "requestedByCompany": result1[i].requestedByCompany,
                    "requestedById": result1[i].requestedById,
                    "quoteId": result1[i].quoteId,
+                    "price": priceresponse[i],
                    "responses": array[i]
                  }
   
-             }  
+             } 
 
-
-//});
-
-
-
-    
 		        callback(err,result);
-         // });
-     });
-		   });
-       })
-      });
-      })
-}
-        
-},
+          }
+         
 
+             })     
+
+
+});
+     }) 
+ }
+
+
+      
+
+//for empty quotes
+
+}
+
+});
+})
+}
+},
 
 
 
@@ -843,7 +1001,8 @@ router.post('/profile', function(req, res){
 
 //this route returns all the order(cancelled as well as successful)
 router.get('/history', function(req, res){
-
+var array=[];
+var result=[];
     jwt.verify(req.headers.authorization, secret, function(err, decoded){
         if(err){
             //console.log("%%%%%%%%%%%%%%%%%%%" + err);
@@ -852,21 +1011,84 @@ router.get('/history', function(req, res){
             })
             return;
         }
+
         var userId =  decoded.id;
            // sql connection
           connection.connect(function(err){
 		    console.log("Connected from history");
-		    var sql="select * from orders where requestedBy='"+userId+"'";
-		    connection.query(sql,function(err,result,fields){
-		     if(err) throw err;
-		        res.json({
+		    var sql="select orderId,generationDate,requiredByDate,requestedBy,requestedById,supplierId,companyName,customerSite,POId,status,statusDate,statusDesc from orders where requestedById='"+userId+"'";
+        connection.query(sql,function(err,result1,fields){
+         if(err) throw err;
+         else{
+
+
+          for(var i=0;i<result1.length;i++){
+                array.push([]);
+              }
+     
+        if(result1.length<=0){
+          result=[];
+          res.json({
                 orders:result 
+               });
+
+        }
+        else{
+        var sql="select * from orderMultiple where  orderId IN (";
+          for(i=0;i<result1.length;i++)
+            {
+              var sql= sql+result1[i].orderId+",";
+            }
+         sql=sql.slice(0,-1);
+         sql=sql+")";
+      connection.query(sql,function(err,result2,fields){
+        if(err) throw err;
+       else{
+           for(i=0;i<result1.length;i++)
+            {
+               
+             for(var j=0;j<result2.length;j++){
+
+                 if(result2[j].orderId==result1[i].orderId){
+                          // console.log("here");
+                       array[i].push(result2[j]);
+                   }
+                   
+            }
+        }
+
+
+             for(var i=0;i<result1.length;i++){
+                  result[i]={
+                    "orderId":result1[i].orderId,
+                     "generationDate":result1[i].generationDate,
+                     "requiredByDate":result1[i].requiredByDate,
+                     "requestedBy":result1[i].requestedBy,
+                     "requestedById":result1[i].requestedById,
+                     "supplierId":result1[i].supplierId,
+                     "companyName":result1[i].companyName,
+                      "customerSite":result1[i].customerSite,
+                     "POId":result1[i].POId,
+                     "status":result1[i].status,
+                     "statusDate":result1[i].statusDate,
+                     "statusDesc":result1[i].statusDesc,
+                     "data":array[i]
+                   }
+                  }
+		       
+            res.json({
+                orders:result 
+               
             });
+          }
         });
+    }
+  }
     });
 });
 
 });
+  });
 
 //this is post for forgot password which requires user's email id
 router.post('/forgot', function(req, res){
@@ -1008,10 +1230,7 @@ router.post('/reset/:token', function(req, res){
 });
 
 router.post('/requestquote', function(req, res){
-
-
-
-    jwt.verify(req.headers.authorization, secret, function(err, decoded){
+ jwt.verify(req.headers.authorization, secret, function(err, decoded){
         if(err){
             //console.log("%%%%%%%%%%%%%%%%%%%" + err);
             res.json({
@@ -1025,28 +1244,15 @@ router.post('/requestquote', function(req, res){
 //defining arrays
         var quality = [];
         var quantity = [];
-      //  var customerSite = [];
-      ///var requiredDate = [];
-       // var requestedBy = [];
-        //var companyName = [];
         
         console.log(req.body.quality);
          console.log(req.body.quantity);
           console.log(req.body.customerSite);
            console.log(req.body.requiredDate);
-/*
-//string to array
-       var quality = (req.body.quality).split(",");
-        var quantity = (req.body.quantity).split(",");
-        var customerSite = (req.body.customerSite).split(",");
-        var generationDate =  Date.now();
-        var requiredDate = (req.body.requiredDate).split(",");
-        var requestedBy = (req.body.name).split(",");
-        var requestedById = userId;
-        var companyName = (req.body.company).split(",");
-*/
-//list logic
-  var quality = req.body.quality;
+           console.log((req.body.quality).length);
+            console.log(Array.isArray(req.body.quality));
+       
+       var quality = req.body.quality;
         var quantity = req.body.quantity;
         var customerSite = req.body.customerSite;
         var generationDate =  Date.now();
@@ -1055,19 +1261,6 @@ router.post('/requestquote', function(req, res){
         var requestedById = userId;
         var companyName = req.body.company;
 
-// multiple
-       /* var quality = req.body.a2.quality;
-        var quantity = req.body.a2.quantity;
-        var customerSite = req.body.a2.customerSite;
-        var generationDate =  Date.now();
-        var requiredDate = req.body.a2.requiredDate;
-        var requestedBy = req.body.a2.name;
-        var requestedById = userId;
-        var companyName = req.body.a2.company;
-
-          
-        var generationDate =  Date.now();
-        var requestedById = userId;*/
        req.checkBody('quantity', 'quantity cannot be empty').notEmpty();
         req.checkBody('quality', 'quality cannot be empty').notEmpty();
         req.checkBody('customerSite', 'customerSite cannot be empty').notEmpty();
@@ -1094,26 +1287,79 @@ router.post('/requestquote', function(req, res){
 
            console.log(quality.length);
 			     connection.connect(function(err){
-			    var i=0;
+			   
 			    //console.log(newQuote[0].quantity);
 			    //if(err) throw err;
-			    for( i;i<quality.length;i++){
-			    console.log("Connected form requestquote");
-			    var sql="Insert into quotes(quantity,quality,customerSite,generationDate,requiredDate,requestedBy,requestedByCompany,requestedById) values('"+newQuote.quantity[i]+"','"+newQuote.quality[i]+"','"+newQuote.customerSite+"','"+generationDate+"','"+newQuote.requiredDate+"','"+newQuote.requestedBy+"','"+newQuote.requestedByCompany+"','"+requestedById+"')";
-			    connection.query(sql,function(err,result,fields){
-              if(err){
-                    return handleError(err, null, res);
-                }
-                })
-			}
+			  
+         console.log("Connected form requestquote");
+        var sql="Insert into quotes(customerSite,generationDate,requiredDate,requestedBy,requestedByCompany,requestedById) values('"+newQuote.customerSite+"','"+generationDate+"','"+newQuote.requiredDate+"','"+newQuote.requestedBy+"','"+newQuote.requestedByCompany+"','"+requestedById+"')";
+        connection.query(sql,function(err,result,fields){
+          console.log(result);
+              console.log(result.insertId);
+            if(err) throw err;
+        else{
+//we are inserting in response table and price table but price and rmxId and validTill will be null. In user.js we will update these values on response of user.
+        // this is done to show multiple responses in quotes 
+        var sql="insert into responses (quoteId,userId) Values('"+result.insertId+"','"+requestedById+"')";
+         connection.query(sql,function(err,result2,fields){
+          console.log(result2);
+            if(err) throw err;
+            
+        if(Array.isArray(req.body.quality))
+    {
+
+          for(  var i=0;i<quality.length;i++){
+       //forimplementing multiple price quality and quantity . It will make null price as number of times as quality present
+        var sql="insert into pricetable (quoteId,id) Values('"+result.insertId+"','"+result2.insertId+"')";
+         connection.query(sql,function(err,result3,fields){
+          console.log(result3);
+            if(err) throw err;
+          });
+
+			   var sql="Insert into multipledata(quoteId,quantity,quality) values('"+result.insertId+"','"+newQuote.quantity[i]+"','"+newQuote.quality[i]+"')";
+         connection.query(sql,function(err,result1,fields){
+
+                  if(err){
+                  return handleError(err, null, res);
+              }
+			});
+
+
+            }
+      }
+      else{
+
+
+          var sql="insert into pricetable (quoteId,id) Values('"+result.insertId+"','"+result2.insertId+"')";
+         connection.query(sql,function(err,result3,fields){
+          console.log(result3);
+            if(err) throw err;
+          });
+
+         var sql="Insert into multipledata(quoteId,quantity,quality) values('"+result.insertId+"','"+newQuote.quantity+"','"+newQuote.quality+"')";
+         connection.query(sql,function(err,result1,fields){
+
+                  if(err){
+                  return handleError(err, null, res);
+              }
+      });
+
+
+      }  
+          
+          });
                 res.json({
                     success:true,
                     msg: 'new request for quote submitted for ' + newQuote.quantity[0] + ' of ' + newQuote.quality[0]  + ' quality redimix.'
                 });
            
-        });
-   }
-});
+ 
+        }
+         });
+   })
+
+}
+})
 });
 
 //this route will cancel an existing quote that was created by contractor
@@ -1150,10 +1396,12 @@ router.post('/createpo', function(req, res){
             })
             return;
         }
-         
+         if(Array.isArray(req.body.quality)){
          var quality=[];
          var quantity=[];
          var price=[];
+         var remQuantity=[];
+       }
         var userId =  decoded.id;
 
         var generationDate = Date.now();
@@ -1167,7 +1415,8 @@ router.post('/createpo', function(req, res){
         var company = req.body.companyName;
         var remQuantity = req.body.quantity;
         var supplierId = req.body.supplierId;
-console.log(company);
+        console.log(company);
+        
         var newPO = ({
             generationDate : generationDate,
             validTill : validTill,
@@ -1188,18 +1437,46 @@ console.log(company);
      connection.connect(function(err){
        console.log(quality.length);
    console.log("Connected form createPO");
-    for(var i=0;i<quality.length;i++){  
-   
 
-    var sql="Insert into purchaseorder(generationDate,validTill,quantity,quality,price,remQuantity,customerSite,requestedBy,requestedById,supplierId,requestedByCompany,confirmedBySupplier) values('"+newPO.generationDate+"','"+newPO.validTill+"','"+newPO.quantity[i]+"','"+newPO.quality[i]+"','"+newPO.price[i]+"','"+newPO.remQuantity+"','"+newPO.customerSite+"','"+newPO.requestedBy+"','"+requestedById+"','"+newPO.supplierId+"','"+newPO.requestedByCompany+"','"+newPO.confirmedBySupplier+"')";
+    var sql="Insert into purchaseorder(generationDate,validTill,customerSite,requestedBy,requestedById,supplierId,requestedByCompany,confirmedBySupplier) values('"+newPO.generationDate+"','"+newPO.validTill+"','"+newPO.customerSite+"','"+newPO.requestedBy+"','"+requestedById+"','"+newPO.supplierId+"','"+newPO.requestedByCompany+"','"+newPO.confirmedBySupplier+"')";
     connection.query(sql,function(err,result,fields){
       if(err){
                 return handleError(err, null, res);
             }
+   
+   if(Array.isArray(req.body.quality)){
+    for(var i=0;i<quality.length;i++)
+    {  
+    
+      var sql="Insert into POmultiple(quantity,quality,price,POId,remQuantity) values('"+newPO.quantity[i]+"','"+newPO.quality[i]+"','"+newPO.price[i]+"','"+result.insertId+"','"+newPO.remQuantity[i]+"')";
+         connection.query(sql,function(err,results,fields){
+      if(err)
+      {
+         return handleError(err, null, res);
+      }
 
-      });
+        });
 
-  }
+   }
+ }
+ else{
+
+
+var sql="Insert into POmultiple(quantity,quality,price,POId,remQuantity) values('"+newPO.quantity+"','"+newPO.quality+"','"+newPO.price+"','"+result.insertId+"','"+newPO.remQuantity+"')";
+         connection.query(sql,function(err,results,fields){
+      if(err)
+      {
+         return handleError(err, null, res);
+      }
+
+        });
+
+
+
+ }
+
+ })
+ 
             
             res.json('PO created');
         
@@ -1240,6 +1517,9 @@ router.post('/deletepo', function(req, res){
     });
 });
 });
+
+
+
 router.get('/pos', function(req, res){
     jwt.verify(req.headers.authorization, secret, function(err, decoded){
         if(err){
@@ -1252,25 +1532,93 @@ router.get('/pos', function(req, res){
         var userId =  decoded.id;
 
        // PO.findPoByContractor(userId, function(err, pos){
-            
+            var senddata=[];
+            var array=[];
             
                 connection.connect(function(err){
-			   // if(err) throw err;
 			    console.log("Connected form findPoByContractor");
-			    connection.query("select * from purchaseorder where requestedById='"+userId+"'",function(err,result,fields){
-			   
-
-            if(err){
+         // var sql="select * from purchaseorder where requestedById='"+userId+"'";
+  var sql="select generationDate,validTill,customerSite,requestedBy,requestedById,supplierId,requestedByCompany,confirmedBySupplier,POId,deletedByContractor from purchaseorder where requestedById='"+userId+"'";
+	    connection.query(sql,function(err,result,fields){
+			   if(err){
                 return handleError(err, null, res);
             }
+            else{
+              //to initialize array of array
+              for(var i=0;i<result.length;i++){
+                array.push([]);
+              }
+     
+    
+       if(result.length<=0){
+      return    res.json({
+          success:true,
+          data:[]
+        })
+       }
+       else{
+
+      var sql="select * from POmultiple where POId IN ( ";
+      for(i=0;i<result.length;i++){
+       var sql= sql+result[i].POId+",";
+         }
+         sql=sql.slice(0,-1);
+         sql=sql+") order by POId";
+
+      connection.query(sql,function(err,results,fields){
+         if(err){
+              throw err;
+            }
+           // console.log(results);
+           else{
+           for(i=0;i<result.length;i++)
+            {
+               
+             for(var j=0;j<results.length;j++){
+
+                 if(results[j].POId==result[i].POId){
+                 
+                       array[i].push(results[j]);
+                   }      
+            }
+        }
+
+             console.log(array);
+             console.log(array[10]);
+        
+
+            for(var i=0;i<result.length;i++){
+                  senddata[i]={
+                     "generationDate":result[i].generationDate,
+                     "validTill":result[i].validTill,
+                     "customerSite":result[i].customerSite,
+                     "requestedBy":result[i].requestedBy,
+                     "requestedById":result[i].requestedById,
+                     "supplierId":result[i].supplierId,
+                     "requestedByCompany":result[i].requestedByCompany,
+                     "confirmedBySupplier":result[i].confirmedBySupplier,
+                     "POId":result[i].POId,
+                     "deletedByContractor":result[i].deletedByContractor,
+                     "values":array[i]
+
+                }
+}
+
             res.json({
                 success:true,
-                data:result
-            })
+                data:senddata
+             })
+            }
+ });
+
+          }
+
+}
         });
     });
 });
 });
+
 
 
 //API to add an Order
@@ -1290,6 +1638,7 @@ router.post('/addorder', function(req, res, next){
 // multiple orders
         var quantity=[];
         var quality=[];
+        var array=[];
           
         var date = Date.now();
         var requiredByDate = req.body.requiredDate;
@@ -1341,8 +1690,12 @@ router.post('/addorder', function(req, res, next){
 			    console.log("Connected form addorder");
 			    connection.query("select * from purchaseorder where POId='"+POId+"'", function(err,result,fields){
                 
+        
+   
+      connection.query("select * from POmultiple where POId='"+POId+"'", function(err,results,fields){
            //console.log(err);
                 // console.log(result.length);
+                console.log(results);
                    if(result.length<=0)
                    {
                     console.log(err);
@@ -1353,48 +1706,127 @@ router.post('/addorder', function(req, res, next){
                    }
 		                          //console.log(result[0].remQuantity);
 		                          console.log(quantity);
-               var i=0;
-              for(i;i<quality.length;i++)
-              {
-                      
+                              console.log(quality);
+               // console.log(typeof(quantity[0])); 
+               // //quantity[0]=Number(quantity[0]);
+               // //console.log(quantity[0]);
+               // console.log(typeof(parseInt(quantity[0]))); 
 
-                if(result[0].remQuantity < quantity[i]){
-                    res.json({
+        if(Array.isArray(req.body.quality)){
+              for(var i=0;i<quantity.length;i++)
+              {
+              
+                console.log(results[0].remQuantity);
+                 //console.log(results[1].remQuantity);
+                  // console.log(results[i].remQuantity);   
+                  if(parseInt(results[i].remQuantity) < parseInt(quantity[i])){
+                   console.log("here");
+                   return res.json({
                         success:false,
                         msg:"The Purchase Order quantity is not enough to fulfill current Order. Please Order a new PO."
                     })
                 }
                 else{
-                    result[0].remQuantity = result[0].remQuantity-quantity[i];
+                    //results[i].remQuantity = results[i].remQuantity-quantity[i];
+                    array.push(parseInt(results[i].remQuantity)-parseInt(quantity[i]));
                     console.log("quantity subtracted");
-                   // purOrder.save();
+  
                   
-			              connection.query("update purchaseorder set remQuantity='"+result[0].remQuantity+"' where POId='"+POId+"'" ,function(err,result,fields){
+			              connection.query("update POmultiple set remQuantity='"+array[i]+"' where POId='"+newOrder.POId+"' && quality='"+newOrder.quality[i]+"'" ,function(err,result,fields){
                  if(err) throw err;
-                 console.log("updated in purchaseorder");
+                 console.log("updated in POmultiple");
+                  console.log(array);
                     //Order.createOrder(newOrder, function (err, order) {
                        });
-
-              var sql="Insert into orders ( generationDate , requiredByDate , quality , quantity , requestedBy , requestedById , supplierId , companyName , customerSite,POId,status, statusDate, statusDesc) values('"+newOrder.generationDate+"','"+newOrder.requiredByDate+"','"+newOrder.quality[i]+"','"+newOrder.quantity[i]+"','"+newOrder.requestedBy+"','"+requestedById+"','"+supplierId+"','"+newOrder.companyName+"','"+newOrder.customerSite+"','"+newOrder.POId+"','"+newOrder.status+"','"+newOrder.statusDate+"','"+newOrder.statusDesc+"')";
-					    connection.query(sql,function(err,result,fields){
-                         if(err){
-                            return handleError(err, null, res);
-                        }
-                             });
+                  }
                 }
-             }
+                console.log(array);
+
+              var sql="Insert into orders ( generationDate , requiredByDate , requestedBy , requestedById , supplierId , companyName , customerSite,POId,status, statusDate, statusDesc) values('"+newOrder.generationDate+"','"+newOrder.requiredByDate+"','"+newOrder.requestedBy+"','"+requestedById+"','"+supplierId+"','"+newOrder.companyName+"','"+newOrder.customerSite+"','"+newOrder.POId+"','"+newOrder.status+"','"+newOrder.statusDate+"','"+newOrder.statusDesc+"')";
+					    connection.query(sql,function(err,result1,fields){
+                         if(err) throw err;
+                    
+                             
+          //to insert in ordermultiple table only for quality, quantity
+          for(var i=0;i<quantity.length;i++){
+           var sql="Insert into orderMultiple (quality , quantity , orderId ) values('"+newOrder.quality[i]+"','"+newOrder.quantity[i]+"','"+result1.insertId+"')";
+              connection.query(sql,function(err,result2,fields){
+                         if(err) throw err;
+                         console.log("inserted into orderMultiple");
+
+                 });
+            }
+
+            });
+            }
+           //for single quality quantity
+            else{
+
+
+             for(var i=0;i<results.length;i++)
+              {
+              
+                console.log(results[0].remQuantity);
+                 //console.log(results[1].remQuantity);
+                  // console.log(results[i].remQuantity);   
+                  if(parseInt(results[i].remQuantity) < parseInt(quantity)){
+                   console.log("here");
+                   return res.json({
+                        success:false,
+                        msg:"The Purchase Order quantity is not enough to fulfill current Order. Please Order a new PO."
+                    })
+                }
+                else{
+                    //results[i].remQuantity = results[i].remQuantity-quantity[i];
+                    array.push(parseInt(results[i].remQuantity)-parseInt(quantity));
+                    console.log("quantity subtracted");
+  
+                  
+                    connection.query("update POmultiple set remQuantity='"+array[i]+"' where POId='"+newOrder.POId+"' && quality='"+newOrder.quality+"'" ,function(err,result,fields){
+                 if(err) throw err;
+                 console.log("updated in POmultiple");
+                  console.log(array);
+                    //Order.createOrder(newOrder, function (err, order) {
+                       });
+                  }
+                }
+                console.log(array);
+
+              var sql="Insert into orders ( generationDate , requiredByDate , requestedBy , requestedById , supplierId , companyName , customerSite,POId,status, statusDate, statusDesc) values('"+newOrder.generationDate+"','"+newOrder.requiredByDate+"','"+newOrder.requestedBy+"','"+requestedById+"','"+supplierId+"','"+newOrder.companyName+"','"+newOrder.customerSite+"','"+newOrder.POId+"','"+newOrder.status+"','"+newOrder.statusDate+"','"+newOrder.statusDesc+"')";
+              connection.query(sql,function(err,result1,fields){
+                         if(err) throw err;
+                    
+                             
+          //to insert in ordermultiple table only for quality, quantity
+         
+           var sql="Insert into orderMultiple (quality , quantity , orderId ) values('"+newOrder.quality+"','"+newOrder.quantity+"','"+result1.insertId+"')";
+              connection.query(sql,function(err,result2,fields){
+                         if(err) throw err;
+                         console.log("inserted into orderMultiple");
+
+                 });
+            
+
+            });
+
+            }
+                
+              
                             res.status(200).json({
                                 success:true,
                                 msg:'order created'
                                 //order:result
                             });
                     
-                    });
+                   
                 });
                      
-            }
+            })
       });
+}
+})
 });
+
 
 //this api is for cancelling a order and it takes an orderId and cancellation reason
 router.post('/cancelorder', function(req, res){
@@ -1430,6 +1862,8 @@ router.post('/cancelorder', function(req, res){
 
         });
     });
+
+
 
 //this post request is to add issues with some orders
 router.post('/addissue', function(req, res){
@@ -1498,72 +1932,72 @@ router.post('/addissue', function(req, res){
 });
 
 
-router.post('/qrcode', function(req, res){
+// router.post('/qrcode', function(req, res){
    
-var totalQuantity=req.body.totalQuantity;
-var orderedQuantity=req.body.orderedQuantity;
-var quality = req.body.quality;
-var customerName=req.body.customerName;
-var supplierId=req.body.supplierId;
-var date=Date.now();
+// var totalQuantity=req.body.totalQuantity;
+// var orderedQuantity=req.body.orderedQuantity;
+// var quality = req.body.quality;
+// var customerName=req.body.customerName;
+// var supplierId=req.body.supplierId;
+// var date=Date.now();
 
-var result=({
-    totalQuantity:totalQuantity,
-    orderedQuantity:orderedQuantity,
-    quality:quality,
-    customerName:customerName,
-    supplierId:supplierId,
-    date:date
+// var result=({
+//     totalQuantity:totalQuantity,
+//     orderedQuantity:orderedQuantity,
+//     quality:quality,
+//     customerName:customerName,
+//     supplierId:supplierId,
+//     date:date
 
-});
-var s="totalQuantity='"+totalQuantity+"'              orderedQuantity='"+orderedQuantity+"'         quality='"+quality+"'          customerName='"+customerName+"'         supplierId='"+supplierId+"'            date of dispatch='"+date+"''";
-var code= qr.imageSync('I love QR!' , {type:'png'} );
-//var code=qr.image(s,{type:'utf-8'});
-//var output =fs.createWriteStream('nodejitsu.svg')
+// });
+// var s="totalQuantity='"+totalQuantity+"'              orderedQuantity='"+orderedQuantity+"'         quality='"+quality+"'          customerName='"+customerName+"'         supplierId='"+supplierId+"'            date of dispatch='"+date+"''";
+// var code= qr.imageSync('I love QR!' , {type:'png'} );
+// //var code=qr.image(s,{type:'utf-8'});
+// //var output =fs.createWriteStream('nodejitsu.svg')
 
-//res.type('png');
-//savePixels(code, "png").pipe(res);
+// //res.type('png');
+// //savePixels(code, "png").pipe(res);
 
-res.send(code);
-console.log(code);
-var st= JSON.stringify(code);
-console.log(st);
-//output=fs.createWriteStream('qr-image');
-//code.pipe(output);
-//code.pipe(res);
-    //console.log(code.pipe(res));
-    connection.connect(function(err){
-    //console.log("Connected form qrcode");
-    /*
-    var img1={
-        image: fs.readFileSync("C:/Users/Windows/Desktop/concreteApp/bag.jpg")
-    };*/
+// res.send(code);
+// console.log(code);
+// var st= JSON.stringify(code);
+// console.log(st);
+// //output=fs.createWriteStream('qr-image');
+// //code.pipe(output);
+// //code.pipe(res);
+//     //console.log(code.pipe(res));
+//     connection.connect(function(err){
+//     //console.log("Connected form qrcode");
+//     /*
+//     var img1={
+//         image: fs.readFileSync("C:/Users/Windows/Desktop/concreteApp/bag.jpg")
+//     };*/
 
-   // var sql="insert into images SET ?";
-  var sql ="insert into images(image) value('"+st+"')";
-    connection.query(sql,function(err,result,fields){
-     if(err) throw err;
+//    // var sql="insert into images SET ?";
+//   var sql ="insert into images(image) value('"+st+"')";
+//     connection.query(sql,function(err,result,fields){
+//      if(err) throw err;
 
 
-    });
+//     });
 
-  var sql ="select image from  images where imageId=23";
-    connection.query(sql,function(err,result,fields){
-     if(err) throw err;
+//   var sql ="select image from  images where imageId=23";
+//     connection.query(sql,function(err,result,fields){
+//      if(err) throw err;
      
 
-res.type('png');
-//savePixels(code, "png").pipe(res);
-console.log(JSON.parse(result[0].image));
-var a={"type":"Buffer","data":[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,145,0,0,0,145,8,0,0,0,0,230,179,5,255,0,0,1,21,73,68,65,84,120,218,237,218,65,18,194,32,12,5,208,222,255,210,122,129,130,9,133,80,156,199,74,219,41,60,23,25,195,167,215,231,109,227,34,34,34,34,34,34,34,34,34,34,250,79,209,245,123,52,159,120,50,11,17,81,129,168,93,12,221,133,7,103,33,34,42,21,221,45,119,119,183,249,53,48,11,17,209,9,162,252,44,68,68,39,136,84,63,209,9,162,128,55,117,119,117,199,70,68,52,99,79,27,248,84,188,203,38,34,154,145,67,54,119,183,219,146,81,34,162,161,254,168,31,55,230,159,37,34,42,21,165,122,161,104,71,31,237,158,136,136,150,137,2,171,247,35,245,246,114,143,171,159,136,104,92,244,184,229,137,70,54,68,68,165,162,254,38,54,122,109,176,234,136,136,150,137,82,37,213,76,216,83,21,70,68,84,32,74,37,136,129,179,208,212,191,18,17,209,90,209,236,230,167,248,84,148,136,40,145,67,70,19,156,212,239,34,34,122,175,168,255,162,214,164,254,136,136,168,82,148,47,66,34,162,237,162,193,148,60,16,252,16,17,109,18,69,223,209,154,120,32,74,68,180,86,180,117,16,17,17,17,17,17,17,17,17,17,157,47,250,2,64,181,157,174,90,85,141,189,0,0,0,0,73,69,78,68,174,66,96,130]};
-res.send(code);
+// res.type('png');
+// //savePixels(code, "png").pipe(res);
+// console.log(JSON.parse(result[0].image));
+// var a={"type":"Buffer","data":[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,145,0,0,0,145,8,0,0,0,0,230,179,5,255,0,0,1,21,73,68,65,84,120,218,237,218,65,18,194,32,12,5,208,222,255,210,122,129,130,9,133,80,156,199,74,219,41,60,23,25,195,167,215,231,109,227,34,34,34,34,34,34,34,34,34,34,250,79,209,245,123,52,159,120,50,11,17,81,129,168,93,12,221,133,7,103,33,34,42,21,221,45,119,119,183,249,53,48,11,17,209,9,162,252,44,68,68,39,136,84,63,209,9,162,128,55,117,119,117,199,70,68,52,99,79,27,248,84,188,203,38,34,154,145,67,54,119,183,219,146,81,34,162,161,254,168,31,55,230,159,37,34,42,21,165,122,161,104,71,31,237,158,136,136,150,137,2,171,247,35,245,246,114,143,171,159,136,104,92,244,184,229,137,70,54,68,68,165,162,254,38,54,122,109,176,234,136,136,150,137,82,37,213,76,216,83,21,70,68,84,32,74,37,136,129,179,208,212,191,18,17,209,90,209,236,230,167,248,84,148,136,40,145,67,70,19,156,212,239,34,34,122,175,168,255,162,214,164,254,136,136,168,82,148,47,66,34,162,237,162,193,148,60,16,252,16,17,109,18,69,223,209,154,120,32,74,68,180,86,180,117,16,17,17,17,17,17,17,17,17,17,157,47,250,2,64,181,157,174,90,85,141,189,0,0,0,0,73,69,78,68,174,66,96,130]};
+// res.send(code);
 
-    });
+//     });
 
 
 
-});
-});
+// });
+// });
 
 
 
