@@ -423,7 +423,7 @@ router.post('/changepass', function(req, res){
 		}
 		var userId = decoded.id;
 
-		User.findById(userId, function(err, user){
+		//User.findById(userId, function(err, user){
 		
 		connection.connect(function(err){
     console.log("Connected from changepass");
@@ -472,7 +472,6 @@ router.post('/changepass', function(req, res){
 });
 });
 	});
-});
 
 //this route returns all the order(cancelled as well as successful)
 router.get('/history', function(req, res){
